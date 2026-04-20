@@ -1,6 +1,6 @@
 import os
-import re
 import random
+import re
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -13,9 +13,20 @@ client = OpenAI(
 
 USED_FILE = "used_topics.txt"
 
+# ---------------------------
+# 🎯 CATEGORIES
+# ---------------------------
+CATEGORIES = [
+    "History facts",
+    "Ocean mysteries",
+    "Mughal Empire",
+    "Quranic stories",
+    "Jannat and Jahannam"
+]
+
 
 # ---------------------------
-# AI CALL
+# 🧠 AI CALL
 # ---------------------------
 def ask_ai(prompt):
     res = client.chat.completions.create(
@@ -26,39 +37,7 @@ def ask_ai(prompt):
 
 
 # ---------------------------
-# CATEGORY CONTROL
-# ---------------------------
-CATEGORIES = [
-    "History facts",
-    "Ocean mysteries",
-    "Mughal Empire"
-]
-
-
-def get_topic():
-    category = random.choice(CATEGORIES)
-
-    prompt = f"""
-    Generate ONE viral Hindi topic about: {category}
-
-    Rules:
-    - Shocking / mysterious
-    - Very specific (not generic)
-    - Not commonly known
-    - Curiosity-driven
-    - One line only
-
-    Examples:
-    "समुद्र का वो हिस्सा जहां कुछ भी नहीं रहता"
-    "औरंगज़ेब का सबसे खतरनाक फैसला"
-    "इतिहास का सबसे छोटा युद्ध"
-    """
-
-    return ask_ai(prompt).strip()
-
-
-# ---------------------------
-# UNIQUE TOPIC SYSTEM
+# 🔁 UNIQUE TOPIC
 # ---------------------------
 def is_used(topic):
     if not os.path.exists(USED_FILE):
@@ -72,6 +51,40 @@ def save_topic(topic):
         f.write(topic + "\n")
 
 
+def get_topic():
+    category = random.choice(CATEGORIES)
+
+    # 🔥 Special handling for Islamic topics
+    if category in ["Quranic stories", "Jannat and Jahannam"]:
+        prompt = f"""
+        Generate ONE meaningful Hindi topic about: {category}
+
+        Rules:
+        - Must be based on authentic Islamic concepts
+        - No fake or exaggerated claims
+        - Emotional and reflective
+        - Short (1 line)
+        - Curiosity driven but respectful
+
+        Example:
+        "जन्नत की वो नेमत जो इंसान सोच भी नहीं सकता"
+        "जहन्नम की सजा जो दिल हिला दे"
+        """
+    else:
+        prompt = f"""
+        Generate ONE viral Hindi topic about: {category}
+
+        Rules:
+        - Shocking / mysterious
+        - Very specific
+        - Not commonly known
+        - Curiosity-driven
+        - One line only
+        """
+
+    return ask_ai(prompt).strip()
+
+
 def get_unique_topic():
     for _ in range(5):
         t = get_topic()
@@ -82,7 +95,7 @@ def get_unique_topic():
 
 
 # ---------------------------
-# SENTENCE SPLIT
+# ✂️ SENTENCES
 # ---------------------------
 def split_sentences(script):
     sentences = re.split(r'[।.!?]', script)
@@ -90,28 +103,47 @@ def split_sentences(script):
 
 
 # ---------------------------
-# CONTENT GENERATION
+# 🎬 CONTENT GENERATION
 # ---------------------------
 def generate_content():
     topic = get_unique_topic()
 
-    script = ask_ai(f"""
-    Topic: {topic}
+    # 🔥 Islamic content handling
+    if any(word in topic.lower() for word in ["जन्नत", "जहन्नम", "कुरान"]):
+        prompt = f"""
+        Topic: {topic}
 
-    Write a 40-55 second Hindi story.
+        Write a 40-55 second Hindi story.
 
-    STRICT RULES:
-    - DO NOT say "Did you know"
-    - DO NOT say "इस वीडियो में"
-    - DO NOT mention "video", "channel", "subscribe"
-    - Start directly with story (like a movie scene)
-    - Add suspense + curiosity
-    - Keep sentences short
-    - End with a twist or shocking reveal
+        Rules:
+        - Respectful tone
+        - Based on Islamic teachings
+        - No exaggeration or fake info
+        - Emotional and powerful
+        - Simple Hindi
+        - No "subscribe", no "video"
 
-    Output only story text.
-    """)
+        Start directly like storytelling.
+        End with a meaningful reflection.
+        """
+    else:
+        prompt = f"""
+        Topic: {topic}
 
+        Write a 40-55 second Hindi story.
+
+        Rules:
+        - Hook in first line
+        - Suspense + curiosity
+        - Short sentences
+        - No "Did you know"
+        - No "इस वीडियो में"
+        - End with twist
+
+        Output only story.
+        """
+
+    script = ask_ai(prompt)
     sentences = split_sentences(script)
 
     return {
@@ -122,43 +154,34 @@ def generate_content():
 
 
 # ---------------------------
-# TITLE + TAGS
+# 🏷️ METADATA
 # ---------------------------
 def generate_metadata(script, topic):
+
     title = ask_ai(f"""
-    Create a SHORT Hindi clickbait title (max 6 words).
+    Create a SHORT Hindi viral title (max 6 words)
 
     Topic: {topic}
 
     Rules:
-    - Must NOT be empty
-    - Must be highly clickable
-    - Add curiosity
+    - Very catchy
+    - Curiosity driven
     - Include #shorts
     """)
 
-    # fallback
-    if not title or len(title.strip()) == 0:
+    if not title:
         title = "😱 Viral Fact #shorts"
-
-    title = title.strip()
 
     if "#shorts" not in title:
         title += " #shorts"
 
-    if len(title) > 100:
-        title = title[:100]
+    tags = "#shorts #viral #history #islamic #facts #ocean"
 
-    tags = "#shorts #viral #history #facts #india"
-
-    return title, tags
+    return title.strip(), tags
 
 
 # ---------------------------
-# BACKWARD COMPATIBILITY FIX
+# BACKWARD FIX
 # ---------------------------
 def generate_idea():
-    """
-    🔥 Fix for old code using generate_idea()
-    """
     return generate_content()
