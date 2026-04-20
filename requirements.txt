@@ -1,0 +1,12 @@
+openai
+python-dotenv
+requests
+moviepy
+pillow
+numpy
+gtts
+python-telegram-bot
+google-auth
+google-auth-oauthlib
+google-api-python-client
+Pillow
