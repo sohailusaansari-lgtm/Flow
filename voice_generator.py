@@ -1,13 +1,17 @@
 import os
 import requests
+import subprocess
 from dotenv import load_dotenv
 
 load_dotenv()
 
-ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
+# ---------------------------
+# ENV (supports both names)
+# ---------------------------
+ELEVEN_API_KEY = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY")
 
-# 🔥 USE FREE VOICE (IMPORTANT)
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel (FREE)
+# 🔥 FREE VOICE (IMPORTANT)
+VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel
 
 OUTPUT_FILE = "voice.mp3"
 
@@ -18,7 +22,8 @@ OUTPUT_FILE = "voice.mp3"
 def create_voice(text):
 
     if not ELEVEN_API_KEY:
-        raise Exception("❌ Missing ELEVEN_API_KEY in .env")
+        print("❌ Missing ElevenLabs API key")
+        return create_fallback_audio()
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
 
@@ -39,52 +44,56 @@ def create_voice(text):
     try:
         response = requests.post(url, json=data, headers=headers, timeout=30)
 
-        # 🔍 DEBUG LOG
-        print("🔊 ElevenLabs:", response.status_code)
+        print("🔊 ElevenLabs Status:", response.status_code)
 
         if response.status_code != 200:
             print("❌ ElevenLabs ERROR:", response.text)
-            raise Exception("ElevenLabs failed — fix API/voice")
+            return create_fallback_audio()
 
+        # save audio
         with open(OUTPUT_FILE, "wb") as f:
             f.write(response.content)
+
+        # ---------------------------
+        # VALIDATION (IMPORTANT)
+        # ---------------------------
+        if not os.path.exists(OUTPUT_FILE) or os.path.getsize(OUTPUT_FILE) < 1000:
+            print("⚠️ Audio too small → fallback")
+            return create_fallback_audio()
 
         return OUTPUT_FILE
 
     except Exception as e:
         print("❌ Voice Exception:", str(e))
-
-        # ---------------------------
-        # 🔥 FALLBACK (NO CRASH)
-        # ---------------------------
         return create_fallback_audio()
 
 
 # ---------------------------
-# FALLBACK AUDIO (IMPORTANT)
+# 🔥 REAL FALLBACK AUDIO (NO CRASH)
 # ---------------------------
 def create_fallback_audio():
-    print("⚠️ Using fallback silent audio...")
+    print("⚠️ Using FFmpeg silent audio fallback...")
+
+    output = OUTPUT_FILE
 
     try:
-        from moviepy.editor import AudioClip
-        import numpy as np
+        subprocess.run([
+            "ffmpeg",
+            "-f", "lavfi",
+            "-i", "anullsrc=r=44100:cl=mono",
+            "-t", "10",
+            "-q:a", "9",
+            "-acodec", "libmp3lame",
+            output
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        duration = 8  # seconds
-
-        def silence(t):
-            return [0]
-
-        audio = AudioClip(silence, duration=duration)
-        audio.write_audiofile(OUTPUT_FILE, fps=44100)
-
-        return OUTPUT_FILE
+        return output
 
     except Exception as e:
-        print("❌ Fallback audio failed:", e)
+        print("❌ FFmpeg fallback failed:", e)
 
-        # last fallback (empty file)
-        with open(OUTPUT_FILE, "wb") as f:
-            f.write(b"")
+        # last fallback (tiny valid file)
+        with open(output, "wb") as f:
+            f.write(b"\x00\x00\x00\x00")
 
-        return OUTPUT_FILE
+        return output
