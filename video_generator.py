@@ -11,7 +11,7 @@ if not hasattr(Image, "ANTIALIAS"):
 # ---------------------------
 # IMPORTS
 # ---------------------------
-from moviepy.editor import *
+from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 import os
 
 
