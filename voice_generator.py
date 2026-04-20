@@ -7,7 +7,7 @@ load_dotenv()
 
 ELEVEN_API_KEY = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY")
 
-VOICE_ID = "kug5BkLLkmHNdMkhpz3d"  # FREE voice
+VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # FREE voice
 OUTPUT_FILE = "voice.mp3"
 
 
