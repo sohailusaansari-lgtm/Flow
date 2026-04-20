@@ -1,15 +1,19 @@
 import os
 import requests
+import random
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-HEADERS = {
-    "Authorization": PEXELS_API_KEY
-}
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
+)
 
+HEADERS = {"Authorization": PEXELS_API_KEY}
 SAVE_DIR = "images"
 
 
@@ -29,26 +33,58 @@ def clean_images():
 
 
 # ---------------------------
-# SEARCH IMAGE FROM PEXELS
+# 🧠 GENERATE VISUAL PROMPT
 # ---------------------------
-def search_image(query, per_page=3):
+def generate_visual_prompt(sentence, topic):
+
+    prompt = f"""
+    Convert this into a cinematic visual search query:
+
+    Topic: {topic}
+    Sentence: {sentence}
+
+    Rules:
+    - Describe what should be SEEN visually
+    - Use 2–5 words only
+    - Be specific and vivid
+    - No abstract words
+
+    Example:
+    "deep ocean glowing creatures"
+    "mughal palace golden throne"
+    "dark fire hell flames"
+    """
+
+    res = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return res.choices[0].message.content.strip()
+
+
+# ---------------------------
+# SEARCH IMAGE
+# ---------------------------
+def search_image(query):
     url = "https://api.pexels.com/v1/search"
 
     try:
         res = requests.get(url, headers=HEADERS, params={
             "query": query,
-            "per_page": per_page
+            "per_page": 5
         })
 
         data = res.json()
-
         photos = data.get("photos", [])
 
         if not photos:
             return None
 
-        # pick first high-res image
-        return photos[0]["src"]["large"]
+        # 🔥 pick random image (avoid repetition)
+        choice = random.choice(photos)
+
+        return choice["src"]["large"]
 
     except Exception as e:
         print("❌ Image API error:", e)
@@ -60,11 +96,9 @@ def search_image(query, per_page=3):
 # ---------------------------
 def download_image(url, filename):
     try:
-        img_data = requests.get(url, timeout=10).content
-
+        img = requests.get(url, timeout=10).content
         with open(filename, "wb") as f:
-            f.write(img_data)
-
+            f.write(img)
         return True
     except:
         return False
@@ -73,54 +107,46 @@ def download_image(url, filename):
 # ---------------------------
 # MAIN FUNCTION
 # ---------------------------
-def download_images_from_sentences(sentences):
+def download_images_from_sentences(sentences, topic):
+
     clean_images()
 
-    print("🖼️ Fetching images...")
+    print("🖼️ Generating smart visuals...")
 
     count = 0
 
     for i, sentence in enumerate(sentences):
 
-        if count >= 20:  # 🔥 limit (prevents crash)
+        if count >= 15:
             break
 
-        # use key words (first few words)
-        query = " ".join(sentence.split()[:4])
+        # 🧠 AI generates better query
+        query = generate_visual_prompt(sentence, topic)
+
+        print(f"🔍 {query}")
 
         img_url = search_image(query)
 
         if not img_url:
-            print(f"⚠️ No image for: {query}")
             continue
 
         filename = os.path.join(SAVE_DIR, f"{count}.jpg")
 
-        success = download_image(img_url, filename)
-
-        if success:
-            print(f"✅ Downloaded: {filename}")
+        if download_image(img_url, filename):
+            print(f"✅ {filename}")
             count += 1
-        else:
-            print(f"❌ Failed: {query}")
 
     # ---------------------------
-    # FALLBACK (VERY IMPORTANT)
+    # FALLBACK
     # ---------------------------
     if count == 0:
-        print("⚠️ No images downloaded, adding fallback")
-
-        # create 1 black image
         from PIL import Image
         img = Image.new("RGB", (720, 1280), (0, 0, 0))
         img.save(os.path.join(SAVE_DIR, "0.jpg"))
 
 
 # ---------------------------
-# BACKWARD COMPATIBILITY
+# BACKWARD COMPAT
 # ---------------------------
 def fetch_images(sentences):
-    """
-    Fix for old imports
-    """
-    return download_images_from_sentences(sentences)
+    return download_images_from_sentences(sentences, "general")
