@@ -1,92 +1,119 @@
-# ================================
-# 🔥 GLOBAL FIX (VERY IMPORTANT)
-# ================================
-import PIL.Image
+import time
+import traceback
+import threading
 
-if not hasattr(PIL.Image, "ANTIALIAS"):
-    PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
+from ai_brain import generate_content, generate_metadata
+from image_fetcher import download_images_from_sentences
+from voice_generator import create_voice
+from video_generator import create_video
+from thumbnail_generator import create_thumbnail
+from youtube_uploader import upload_video
+from logger import send, send_video
 
-
-# ================================
-# 📦 IMPORTS
-# ================================
-import os
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-
-from ai_brain import generate_idea
-from decision_engine import choose_topic
-from image_fetcher import fetch_images
-from image_processor import process_images
-from video_creator import create_video
-from analytics import save_metrics
-from logger import log
+# ---------------------------
+# GLOBAL LOCK (PREVENT DOUBLE RUN)
+# ---------------------------
+is_running = False
 
 
-# ================================
-# 🔑 CONFIG
-# ================================
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# ---------------------------
+# MAIN PIPELINE
+# ---------------------------
+def run():
+    global is_running
 
-
-# ================================
-# 🤖 TELEGRAM COMMANDS
-# ================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot is live!\nUse /generate to create video")
-
-
-async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        await update.message.reply_text("⚙️ Generating video... Please wait")
-
-        log("🚀 Generation started")
-
-        # 🧠 AI pipeline
-        idea = generate_idea()
-        topic = choose_topic(idea)
-
-        log(f"📌 Topic: {topic}")
-
-        images = fetch_images(topic)
-        processed_images = process_images(images)
-
-        video_path = create_video(processed_images)
-
-        save_metrics(topic, video_path)
-
-        # ✅ Send result
-        if video_path and os.path.exists(video_path):
-            await update.message.reply_video(video=open(video_path, "rb"))
-        else:
-            await update.message.reply_text("❌ Failed to create video")
-
-        log("✅ Generation complete")
-
-    except Exception as e:
-        log(f"❌ Error: {e}")
-        await update.message.reply_text(f"Error: {e}")
-
-
-# ================================
-# 🚀 RUN BOT
-# ================================
-def main():
-    if not TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN not set in environment")
+    if is_running:
+        send("⚠️ Already running, skipping...")
         return
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    is_running = True
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("generate", generate))
+    try:
+        send("🚀 Starting new video...")
 
-    print("🤖 Bot running...")
-    app.run_polling()
+        # ---------------------------
+        # 🧠 AI CONTENT
+        # ---------------------------
+        data = generate_content()
+        send(f"🧠 Topic:\n{data['topic']}")
+
+        # ---------------------------
+        # 🖼️ IMAGES
+        # ---------------------------
+        send("🖼️ Fetching images...")
+        download_images_from_sentences(data["sentences"])
+        send("✅ Images ready")
+
+        # ---------------------------
+        # 🎤 VOICE
+        # ---------------------------
+        send("🎤 Generating voice...")
+        audio = create_voice(data["script"])
+        send("✅ Voice ready")
+
+        # ---------------------------
+        # 🎬 VIDEO
+        # ---------------------------
+        send("🎬 Creating video...")
+        create_video("images", audio, data["sentences"])
+        send("✅ Video ready")
+
+        # ---------------------------
+        # 🏷️ METADATA
+        # ---------------------------
+        title, tags = generate_metadata(data["script"], data["topic"])
+        send(f"🏷️ Title:\n{title}")
+
+        # ---------------------------
+        # 🖼️ THUMBNAIL
+        # ---------------------------
+        send("🖼️ Creating thumbnail...")
+        thumb = create_thumbnail(title)
+        send("✅ Thumbnail ready")
+
+        # ---------------------------
+        # 📤 UPLOAD
+        # ---------------------------
+        send("📤 Uploading to YouTube...")
+        link = upload_video(title, tags, thumb)
+
+        send(f"✅ Uploaded successfully:\n{link}")
+
+        # ---------------------------
+        # 📹 SEND VIDEO TO TELEGRAM
+        # ---------------------------
+        send_video("output.mp4", title)
+
+    except Exception as e:
+        send(f"❌ ERROR:\n{str(e)}")
+        send(traceback.format_exc())
+
+    finally:
+        is_running = False
 
 
-# ================================
-# ▶️ ENTRY POINT
-# ================================
+# ---------------------------
+# 🔁 AUTO LOOP (5 HOURS)
+# ---------------------------
+def auto_loop():
+    while True:
+        run()
+        send("⏳ Waiting 5 hours...")
+        time.sleep(18000)  # 5 hours
+
+
+# ---------------------------
+# START AUTO LOOP (BACKGROUND)
+# ---------------------------
+def start_auto():
+    t = threading.Thread(target=auto_loop, daemon=True)
+    t.start()
+
+
+# ---------------------------
+# OPTIONAL DIRECT RUN
+# ---------------------------
 if __name__ == "__main__":
-    main()
+    start_auto()
+    while True:
+        time.sleep(1)
