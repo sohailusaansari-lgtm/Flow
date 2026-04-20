@@ -1,33 +1,100 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import os
+import asyncio
+from dotenv import load_dotenv
 
-from ai_brain import generate_idea
-from decision_engine import choose_topic
-from image_fetcher import fetch_images
-from image_processor import process_images
-from video_creator import create_video
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes
+)
+
+# 🔥 ONLY import from main
+from main import run, start_auto
+
+load_dotenv()
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# prevent multiple runs
+is_running = False
 
 
+# ---------------------------
+# /start COMMAND
+# ---------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot is ready!")
+    keyboard = [
+        [InlineKeyboardButton("🚀 Upload Video", callback_data="upload")]
+    ]
+
+    await update.message.reply_text(
+        "🤖 AI Video Bot Ready\n\nClick below to upload:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
-async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚙️ Generating video...")
+# ---------------------------
+# BUTTON HANDLER
+# ---------------------------
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global is_running
 
-    idea = generate_idea()
-    topic = choose_topic(idea)
-    images = fetch_images(topic)
-    processed = process_images(images)
-    video = create_video(processed)
+    query = update.callback_query
+    await query.answer()
 
-    await update.message.reply_text(f"✅ Done!\n{video}")
+    if query.data == "upload":
+
+        if is_running:
+            await query.edit_message_text("⚠️ Already running, please wait...")
+            return
+
+        is_running = True
+
+        await query.edit_message_text("🚀 Starting video generation...")
+
+        loop = asyncio.get_running_loop()
+
+        def task():
+            global is_running
+            try:
+                run()  # 🔥 YOUR MAIN PIPELINE
+            except Exception as e:
+                print("❌ Error:", e)
+            finally:
+                is_running = False
+
+        # run without blocking bot
+        loop.run_in_executor(None, task)
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="⏳ Processing started... updates will follow."
+        )
 
 
-def run_bot(token):
-    app = ApplicationBuilder().token(token).build()
+# ---------------------------
+# MAIN BOT
+# ---------------------------
+def main():
+    if not TOKEN:
+        raise Exception("❌ TELEGRAM_BOT_TOKEN missing in .env")
+
+    # 🔥 Start 5-hour auto loop
+    start_auto()
+
+    app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("generate", generate))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
+    print("🤖 Bot running...")
     app.run_polling()
+
+
+# ---------------------------
+# ENTRY POINT
+# ---------------------------
+if __name__ == "__main__":
+    main()
