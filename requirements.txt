@@ -14,3 +14,8 @@ google-auth-httplib2
 python-telegram-bot==20.7
 
 tqdm
+moviepy==1.0.3
+imageio
+imageio-ffmpeg
+numpy
+Pillow
