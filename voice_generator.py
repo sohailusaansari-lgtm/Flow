@@ -5,25 +5,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---------------------------
-# ENV (supports both names)
-# ---------------------------
 ELEVEN_API_KEY = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY")
 
-# 🔥 FREE VOICE (IMPORTANT)
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel
-
+VOICE_ID = "kug5BkLLkmHNdMkhpz3d"  # FREE voice
 OUTPUT_FILE = "voice.mp3"
 
 
-# ---------------------------
-# CREATE VOICE
-# ---------------------------
 def create_voice(text):
 
     if not ELEVEN_API_KEY:
-        print("❌ Missing ElevenLabs API key")
-        return create_fallback_audio()
+        print("❌ Missing API key → fallback")
+        return create_fallback_audio(text)
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
 
@@ -34,66 +26,47 @@ def create_voice(text):
 
     data = {
         "text": text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.75
-        }
+        "model_id": "eleven_multilingual_v2"
     }
 
     try:
-        response = requests.post(url, json=data, headers=headers, timeout=30)
+        res = requests.post(url, json=data, headers=headers, timeout=30)
 
-        print("🔊 ElevenLabs Status:", response.status_code)
+        print("🔊 ElevenLabs:", res.status_code)
 
-        if response.status_code != 200:
-            print("❌ ElevenLabs ERROR:", response.text)
-            return create_fallback_audio()
+        if res.status_code != 200:
+            print(res.text)
+            return create_fallback_audio(text)
 
-        # save audio
         with open(OUTPUT_FILE, "wb") as f:
-            f.write(response.content)
+            f.write(res.content)
 
-        # ---------------------------
-        # VALIDATION (IMPORTANT)
-        # ---------------------------
-        if not os.path.exists(OUTPUT_FILE) or os.path.getsize(OUTPUT_FILE) < 1000:
-            print("⚠️ Audio too small → fallback")
-            return create_fallback_audio()
+        # validate
+        if os.path.getsize(OUTPUT_FILE) < 1000:
+            return create_fallback_audio(text)
 
         return OUTPUT_FILE
 
     except Exception as e:
-        print("❌ Voice Exception:", str(e))
-        return create_fallback_audio()
+        print("❌ Voice error:", e)
+        return create_fallback_audio(text)
 
 
-# ---------------------------
-# 🔥 REAL FALLBACK AUDIO (NO CRASH)
-# ---------------------------
-def create_fallback_audio():
-    print("⚠️ Using FFmpeg silent audio fallback...")
+# 🔥 FIXED FALLBACK (DYNAMIC LENGTH)
+def create_fallback_audio(text):
+    print("⚠️ Using fallback audio")
 
-    output = OUTPUT_FILE
+    words = len(text.split())
+    duration = max(40, min(55, words / 2.5))  # 🔥 key fix
 
-    try:
-        subprocess.run([
-            "ffmpeg",
-            "-f", "lavfi",
-            "-i", "anullsrc=r=44100:cl=mono",
-            "-t", "10",
-            "-q:a", "9",
-            "-acodec", "libmp3lame",
-            output
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run([
+        "ffmpeg",
+        "-f", "lavfi",
+        "-i", "anullsrc=r=44100:cl=mono",
+        "-t", str(duration),
+        "-q:a", "9",
+        "-acodec", "libmp3lame",
+        OUTPUT_FILE
+    ])
 
-        return output
-
-    except Exception as e:
-        print("❌ FFmpeg fallback failed:", e)
-
-        # last fallback (tiny valid file)
-        with open(output, "wb") as f:
-            f.write(b"\x00\x00\x00\x00")
-
-        return output
+    return OUTPUT_FILE
