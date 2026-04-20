@@ -13,6 +13,7 @@ client = OpenAI(
 
 USED_FILE = "used_topics.txt"
 
+
 # ---------------------------
 # AI CALL
 # ---------------------------
@@ -103,10 +104,10 @@ def generate_content():
     - DO NOT say "Did you know"
     - DO NOT say "इस वीडियो में"
     - DO NOT mention "video", "channel", "subscribe"
-    - Start directly with story (like movie scene)
+    - Start directly with story (like a movie scene)
     - Add suspense + curiosity
     - Keep sentences short
-    - End with twist or shocking reveal
+    - End with a twist or shocking reveal
 
     Output only story text.
     """)
@@ -136,7 +137,7 @@ def generate_metadata(script, topic):
     - Include #shorts
     """)
 
-    # safety fallback
+    # fallback
     if not title or len(title.strip()) == 0:
         title = "😱 Viral Fact #shorts"
 
@@ -151,3 +152,13 @@ def generate_metadata(script, topic):
     tags = "#shorts #viral #history #facts #india"
 
     return title, tags
+
+
+# ---------------------------
+# BACKWARD COMPATIBILITY FIX
+# ---------------------------
+def generate_idea():
+    """
+    🔥 Fix for old code using generate_idea()
+    """
+    return generate_content()
