@@ -1,146 +1,143 @@
-# ---------------------------
-# PIL FIX (IMPORTANT)
-# ---------------------------
-from PIL import Image
-
-if not hasattr(Image, "ANTIALIAS"):
-    Image.ANTIALIAS = Image.Resampling.LANCZOS
-
-
-# ---------------------------
-# IMPORTS
-# ---------------------------
+import os
+import random
 from moviepy.editor import (
     ImageClip,
     AudioFileClip,
-    concatenate_videoclips,
-    ColorClip
+    concatenate_videoclips
 )
 
-import os
+
+# ---------------------------
+# 🎯 SETTINGS
+# ---------------------------
+WIDTH = 1080
+HEIGHT = 1920
+MIN_DURATION = 40
+MAX_DURATION = 55
 
 
 # ---------------------------
-# SAFE DURATION ESTIMATION
+# 🧠 GET AUDIO DURATION
 # ---------------------------
-def estimate_duration(sentence):
-    words = len(sentence.split())
-    return max(1.2, min(4, words / 2.8))
-
-
-# ---------------------------
-# SAFE IMAGE LOADER
-# ---------------------------
-def safe_image(path):
-    try:
-        return ImageClip(path)
-    except Exception as e:
-        print(f"⚠️ Bad image skipped: {path}")
-        return None
+def get_audio_duration(audio_path):
+    audio = AudioFileClip(audio_path)
+    return audio.duration
 
 
 # ---------------------------
-# CREATE VIDEO
+# 🎞️ CREATE IMAGE CLIP
 # ---------------------------
-def create_video(img_folder, audio_path, sentences):
+def create_clip(image_path, duration):
 
-    # ---------------------------
-    # LOAD AUDIO (FIXED)
-    # ---------------------------
-    if not os.path.exists(audio_path) or os.path.getsize(audio_path) < 1000:
-        raise Exception("❌ Invalid audio file")
+    clip = (
+        ImageClip(image_path)
+        .resize(height=HEIGHT)  # keep ratio
+        .set_duration(duration)
+    )
 
-    voice = AudioFileClip(audio_path).set_fps(44100)
+    # 🔥 Random zoom (Ken Burns effect)
+    zoom = random.choice(["in", "out"])
 
-    # ---------------------------
-    # LOAD IMAGES
-    # ---------------------------
+    if zoom == "in":
+        clip = clip.resize(lambda t: 1 + 0.08 * t)
+    else:
+        clip = clip.resize(lambda t: 1 + 0.08 * (duration - t))
+
+    # center crop to 1080x1920
+    clip = clip.crop(
+        x_center=clip.w / 2,
+        y_center=clip.h / 2,
+        width=WIDTH,
+        height=HEIGHT
+    )
+
+    return clip
+
+
+# ---------------------------
+# 🎬 MAIN VIDEO CREATOR
+# ---------------------------
+def create_video(image_folder, audio_path, sentences):
+
+    print("🎬 Creating video...")
+
     images = sorted([
-        os.path.join(img_folder, i)
-        for i in os.listdir(img_folder)
-        if i.endswith((".jpg", ".png"))
+        os.path.join(image_folder, img)
+        for img in os.listdir(image_folder)
+        if img.endswith(".jpg") or img.endswith(".png")
     ])
 
+    if not images:
+        raise Exception("❌ No images found")
+
+    # ---------------------------
+    # 🎧 LOAD AUDIO
+    # ---------------------------
+    audio = AudioFileClip(audio_path).set_fps(44100)
+    audio_duration = audio.duration
+
+    print(f"🎧 Audio duration: {audio_duration:.2f}s")
+
+    # ---------------------------
+    # ⏱️ FORCE MIN LENGTH
+    # ---------------------------
+    if audio_duration < MIN_DURATION:
+        print("⚠️ Audio too short → looping")
+
+        loops = int(MIN_DURATION // audio_duration) + 1
+        audio = concatenate_videoclips([audio] * loops).audio
+        audio_duration = audio.duration
+
+    # ---------------------------
+    # 🧠 SENTENCE TIMING
+    # ---------------------------
+    total_sentences = len(sentences)
+    if total_sentences == 0:
+        total_sentences = 1
+
+    duration_per_sentence = audio_duration / total_sentences
+
+    # ---------------------------
+    # 🎞️ CREATE CLIPS
+    # ---------------------------
     clips = []
 
-    # ---------------------------
-    # FALLBACK (NO IMAGES)
-    # ---------------------------
-    if not images:
-        print("⚠️ No images → black background")
+    for i, sentence in enumerate(sentences):
 
-        clip = ColorClip((720, 1280), color=(0, 0, 0)) \
-            .set_duration(voice.duration) \
-            .set_audio(voice)
+        img = images[i % len(images)]
 
-        clip.write_videofile(
-            "output.mp4",
-            fps=24,
-            codec="libx264",
-            audio_codec="aac",
-            preset="ultrafast",
-            threads=2
-        )
-        return
+        clip = create_clip(img, duration_per_sentence)
+
+        clips.append(clip)
 
     # ---------------------------
-    # LIMIT CLIPS (PREVENT RAM CRASH)
+    # 🎬 MERGE
     # ---------------------------
-    max_clips = min(len(sentences), len(images), 15)
-
-    for i in range(max_clips):
-
-        dur = estimate_duration(sentences[i])
-
-        clip = safe_image(images[i])
-        if clip is None:
-            continue
-
-        try:
-            clip = (
-                clip
-                .set_duration(dur)
-                .resize(height=1280)
-                .set_position("center")
-            )
-
-            clips.append(clip)
-
-        except Exception as e:
-            print(f"⚠️ Clip error: {e}")
+    video = concatenate_videoclips(clips, method="compose")
 
     # ---------------------------
-    # SAFETY CHECK
+    # 🔊 SET AUDIO
     # ---------------------------
-    if not clips:
-        raise Exception("❌ No valid clips")
+    video = video.set_audio(audio)
 
     # ---------------------------
-    # CONCAT VIDEO (SAFE)
+    # ✂️ CUT TO MAX 55s
     # ---------------------------
-    try:
-        video = concatenate_videoclips(clips, method="compose")
-    except Exception as e:
-        print("⚠️ concat failed, using first clip")
-        video = clips[0]
+    if video.duration > MAX_DURATION:
+        video = video.subclip(0, MAX_DURATION)
+
+    print(f"🎬 Final duration: {video.duration:.2f}s")
 
     # ---------------------------
-    # 🔥 CRITICAL AUDIO FIX
-    # ---------------------------
-    video = video.set_audio(voice)
-
-    # match duration EXACTLY
-    video = video.set_duration(voice.duration)
-
-    # ---------------------------
-    # EXPORT VIDEO (STABLE)
+    # 💾 EXPORT
     # ---------------------------
     video.write_videofile(
         "output.mp4",
-        fps=24,
+        fps=30,
         codec="libx264",
         audio_codec="aac",
-        preset="ultrafast",
-        threads=2,
-        audio_fps=44100
+        threads=4,
+        preset="ultrafast"
     )
+
+    print("✅ Video saved as output.mp4")
