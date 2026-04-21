@@ -1,21 +1,23 @@
 import os
 import requests
-import subprocess
 from dotenv import load_dotenv
+
+# fallback imports
+from gtts import gTTS
 
 load_dotenv()
 
-ELEVEN_API_KEY = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY")
+ELEVEN_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # FREE voice
+VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # FREE usable
+
 OUTPUT_FILE = "voice.mp3"
 
 
-def create_voice(text):
-
-    if not ELEVEN_API_KEY:
-        print("❌ Missing API key → fallback")
-        return create_fallback_audio(text)
+# ---------------------------
+# 🎙️ ELEVENLABS (REALISTIC)
+# ---------------------------
+def elevenlabs_tts(text):
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
 
@@ -26,47 +28,96 @@ def create_voice(text):
 
     data = {
         "text": text,
-        "model_id": "eleven_multilingual_v2"
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.45,
+            "similarity_boost": 0.85,
+            "style": 0.6,
+            "use_speaker_boost": True
+        }
     }
 
     try:
         res = requests.post(url, json=data, headers=headers, timeout=30)
 
-        print("🔊 ElevenLabs:", res.status_code)
-
         if res.status_code != 200:
-            print(res.text)
-            return create_fallback_audio(text)
+            print("❌ ElevenLabs failed:", res.text)
+            return None
 
         with open(OUTPUT_FILE, "wb") as f:
             f.write(res.content)
 
-        # validate
-        if os.path.getsize(OUTPUT_FILE) < 1000:
-            return create_fallback_audio(text)
+        return OUTPUT_FILE
+
+    except Exception as e:
+        print("❌ ElevenLabs exception:", e)
+        return None
+
+
+# ---------------------------
+# 🎤 COQUI (OFFLINE REAL VOICE)
+# ---------------------------
+def coqui_tts(text):
+    try:
+        from TTS.api import TTS
+
+        print("🔁 Using Coqui TTS (realistic Hindi)")
+
+        tts = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
+
+        tts.tts_to_file(
+            text=text,
+            file_path=OUTPUT_FILE,
+            speaker_wav=None,
+            language="hi"
+        )
 
         return OUTPUT_FILE
 
     except Exception as e:
-        print("❌ Voice error:", e)
-        return create_fallback_audio(text)
+        print("❌ Coqui failed:", e)
+        return None
 
 
-# 🔥 FIXED FALLBACK (DYNAMIC LENGTH)
-def create_fallback_audio(text):
-    print("⚠️ Using fallback audio")
+# ---------------------------
+# 🟡 gTTS (LAST FALLBACK)
+# ---------------------------
+def gtts_fallback(text):
+    print("⚠️ Using gTTS fallback")
 
-    words = len(text.split())
-    duration = max(40, min(55, words / 2.5))  # 🔥 key fix
-
-    subprocess.run([
-        "ffmpeg",
-        "-f", "lavfi",
-        "-i", "anullsrc=r=44100:cl=mono",
-        "-t", str(duration),
-        "-q:a", "9",
-        "-acodec", "libmp3lame",
-        OUTPUT_FILE
-    ])
+    tts = gTTS(text=text, lang="hi")
+    tts.save(OUTPUT_FILE)
 
     return OUTPUT_FILE
+
+
+# ---------------------------
+# 🔍 VALIDATION
+# ---------------------------
+def is_valid_audio(path):
+    return path and os.path.exists(path) and os.path.getsize(path) > 5000
+
+
+# ---------------------------
+# 🎯 MAIN FUNCTION
+# ---------------------------
+def create_voice(text):
+
+    print("🎤 Generating voice...")
+
+    # 1️⃣ ElevenLabs
+    audio = elevenlabs_tts(text)
+    if is_valid_audio(audio):
+        print("✅ ElevenLabs voice ready")
+        return audio
+
+    # 2️⃣ Coqui (realistic offline)
+    audio = coqui_tts(text)
+    if is_valid_audio(audio):
+        print("✅ Coqui voice ready")
+        return audio
+
+    # 3️⃣ gTTS (guaranteed)
+    audio = gtts_fallback(text)
+    print("✅ gTTS voice ready")
+    return audio
