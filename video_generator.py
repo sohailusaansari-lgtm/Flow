@@ -1,3 +1,8 @@
+from PIL import Image
+
+# Fix for Pillow 10+
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
 import os
 import random
 from moviepy.editor import (
