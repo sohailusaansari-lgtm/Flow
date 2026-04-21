@@ -31,8 +31,7 @@ def run():
         # ---------------------------
         # 🎤 VOICE
         # ---------------------------
-        audio = create_voice(script)
-
+        audio = create_voice(script, topic)
         print("🎤 Voice ready:", audio)
 
         # ---------------------------
