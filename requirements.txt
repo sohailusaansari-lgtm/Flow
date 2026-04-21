@@ -19,3 +19,6 @@ imageio
 imageio-ffmpeg
 numpy
 Pillow
+gTTS
+TTS
+torch
