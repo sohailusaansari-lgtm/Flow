@@ -1,86 +1,96 @@
-import os
-import requests
-from dotenv import load_dotenv
-
-# fallback imports
+from openai import OpenAI
 from gtts import gTTS
+import os
 
-load_dotenv()
-
-ELEVEN_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-
-VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # FREE usable
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 OUTPUT_FILE = "voice.mp3"
 
 
 # ---------------------------
-# 🎙️ ELEVENLABS (REALISTIC)
+# 🎭 CATEGORY DETECTION
 # ---------------------------
-def elevenlabs_tts(text):
+def detect_category(topic):
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+    topic_lower = topic.lower()
 
-    headers = {
-        "xi-api-key": ELEVEN_API_KEY,
-        "Content-Type": "application/json"
-    }
+    if any(x in topic_lower for x in ["जन्नत", "जहन्नम", "कुरान", "islam"]):
+        return "islamic"
 
-    data = {
-        "text": text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.45,
-            "similarity_boost": 0.85,
-            "style": 0.6,
-            "use_speaker_boost": True
-        }
-    }
+    elif any(x in topic_lower for x in ["ocean", "समुद्र", "deep sea"]):
+        return "ocean"
+
+    elif any(x in topic_lower for x in ["mughal", "history", "इतिहास", "बादशाह"]):
+        return "history"
+
+    return "general"
+
+
+# ---------------------------
+# 🎙️ STYLE PROMPTS
+# ---------------------------
+def get_style_prompt(category):
+
+    if category == "islamic":
+        return """
+        आवाज़: गहरी, शांत, भावनात्मक और सम्मानपूर्ण।
+        बोलने का अंदाज़: धीरे, स्पष्ट, दिल को छूने वाला।
+        """
+
+    elif category == "ocean":
+        return """
+        आवाज़: रहस्यमयी, धीमी और सस्पेंस से भरी।
+        बोलने का अंदाज़: धीरे-धीरे, curiosity पैदा करने वाला।
+        """
+
+    elif category == "history":
+        return """
+        आवाज़: दमदार, शाही और प्रभावशाली।
+        बोलने का अंदाज़: कहानी सुनाने जैसा, ताकत के साथ।
+        """
+
+    else:
+        return """
+        आवाज़: सामान्य, साफ और engaging।
+        """
+
+
+# ---------------------------
+# 🎤 OPENAI TTS
+# ---------------------------
+def openai_tts(text, topic):
 
     try:
-        res = requests.post(url, json=data, headers=headers, timeout=30)
+        category = detect_category(topic)
+        style = get_style_prompt(category)
 
-        if res.status_code != 200:
-            print("❌ ElevenLabs failed:", res.text)
-            return None
+        styled_text = f"""
+        {style}
 
-        with open(OUTPUT_FILE, "wb") as f:
-            f.write(res.content)
+        टेक्स्ट:
+        {text}
+        """
 
-        return OUTPUT_FILE
+        print(f"🎭 Voice Style: {category}")
 
-    except Exception as e:
-        print("❌ ElevenLabs exception:", e)
-        return None
-
-
-# ---------------------------
-# 🎤 COQUI (OFFLINE REAL VOICE)
-# ---------------------------
-def coqui_tts(text):
-    try:
-        from TTS.api import TTS
-
-        print("🔁 Using Coqui TTS (realistic Hindi)")
-
-        tts = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
-
-        tts.tts_to_file(
-            text=text,
-            file_path=OUTPUT_FILE,
-            speaker_wav=None,
-            language="hi"
+        response = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",
+            input=styled_text
         )
 
+        with open(OUTPUT_FILE, "wb") as f:
+            f.write(response.content)
+
         return OUTPUT_FILE
 
     except Exception as e:
-        print("❌ Coqui failed:", e)
+        print("❌ OpenAI TTS failed:", e)
         return None
 
 
 # ---------------------------
-# 🟡 gTTS (LAST FALLBACK)
+# 🟡 FALLBACK (ALWAYS WORKS)
 # ---------------------------
 def gtts_fallback(text):
     print("⚠️ Using gTTS fallback")
@@ -94,30 +104,21 @@ def gtts_fallback(text):
 # ---------------------------
 # 🔍 VALIDATION
 # ---------------------------
-def is_valid_audio(path):
+def is_valid(path):
     return path and os.path.exists(path) and os.path.getsize(path) > 5000
 
 
 # ---------------------------
 # 🎯 MAIN FUNCTION
 # ---------------------------
-def create_voice(text):
+def create_voice(text, topic):
 
-    print("🎤 Generating voice...")
+    print("🎤 Generating dynamic voice...")
 
-    # 1️⃣ ElevenLabs
-    audio = elevenlabs_tts(text)
-    if is_valid_audio(audio):
-        print("✅ ElevenLabs voice ready")
+    audio = openai_tts(text, topic)
+
+    if is_valid(audio):
+        print("✅ Dynamic voice ready")
         return audio
 
-    # 2️⃣ Coqui (realistic offline)
-    audio = coqui_tts(text)
-    if is_valid_audio(audio):
-        print("✅ Coqui voice ready")
-        return audio
-
-    # 3️⃣ gTTS (guaranteed)
-    audio = gtts_fallback(text)
-    print("✅ gTTS voice ready")
-    return audio
+    return gtts_fallback(text)
